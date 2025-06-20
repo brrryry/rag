@@ -1,2 +1,3 @@
 .venv/
 bert_binary_classifier.pth
+rag/data/
