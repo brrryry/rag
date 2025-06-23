@@ -17,7 +17,7 @@ class RAGSec:
     text_splitter=None,
     data_file = "data/ragsec_data.json",
     device=None):
-        self.model = model
+        self.detector_model = detector_model
         self.embed_model = AutoModel.from_pretrained(embed_model)
         self.tokenizer_path = tokenizer_path
         self.tokenizer = BertTokenizer.from_pretrained(self.tokenizer_path)
@@ -26,7 +26,7 @@ class RAGSec:
         if detector_model_path:
             if not os.path.exists(detector_model_path):
                 raise FileNotFoundError(f"Model file not found at {detector_model_path}")
-            self.model.load_state_dict(torch.load(detector_model_path, map_location='cpu'))
+            self.detector_model.load_state_dict(torch.load(detector_model_path, map_location='cpu'))
 
         if not text_splitter:
             self.text_splitter = RecursiveCharacterTextSplitter(
@@ -36,8 +36,11 @@ class RAGSec:
             )
 
         self.device = device if device else 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model.to(self.device)
-        self.model.eval()
+        self.detector_model.to(self.device)
+        self.detector_model.eval()
+
+        self.embed_model.to(self.device)
+        self.embed_model.eval()
 
         self.data_file = data_file
         self.data = self.__load_data()
@@ -63,11 +66,11 @@ class RAGSec:
 
     def __malicious_check(self, chunks):
         """
-        Check if a chunk has malicious content.
+        Check if chunks have malicious content.
         """
         embeds = self.tokenizer(chunks, return_tensors='pt', padding=True, truncation=True, max_length=512).to(self.device)
         with torch.no_grad():
-            outputs = self.model(**embeds)
+            outputs = self.detector_model(**embeds)
             logits = outputs.logits.squeeze().cpu().numpy()
         
         predictions = torch.sigmoid(torch.tensor(logits)).numpy()
@@ -82,7 +85,11 @@ class RAGSec:
         for chunk, pred in zip(chunks, predictions):
             probs.append(pred)
 
-        return max(probs)
+        for chunk, prob in zip(chunks, probs):
+            if prob > 0.5:
+                return chunk, prob
+
+        return None, max(probs)
 
     def __chunk_text(self, doc, file_name=None):
         """
@@ -115,7 +122,7 @@ class RAGSec:
         
         return doc_id, chunk_data
 
-    def add(self, doc, file_name=None):
+    def add(self, doc, file_name=None, malicious_check=True):
         """
         Add a new document to the RAG system.
         """
@@ -126,10 +133,13 @@ class RAGSec:
         doc_id, chunk_data = self.__chunk_text(doc, file_name)
 
         chunk_texts = [chunk['text'] for chunk in chunk_data.values()]
-        malicious_score = self.__malicious_check(chunk_texts)
 
-        if malicious_score > 0.5:
-            raise ValueError(f"Document contains potentially malicious content with score {malicious_score:.4f}.")
+        # Perform malicious content check if enabled
+        if malicious_check:
+            malicious_string, malicious_score = self.__malicious_check(chunk_texts)
+
+            if malicious_string:
+                raise ValueError(f"Document contains malicious content: '{malicious_string}' with score {malicious_score:.4f}")
         
     
         embeddings = {}
@@ -150,7 +160,7 @@ class RAGSec:
         self.__save_data(self.data)
         return doc_id
 
-    def query(self, query, top_documents=5):
+    def query(self, query, top_documents=5, malicious_check=True):
         """
         Query the RAG system.
         """
@@ -174,6 +184,15 @@ class RAGSec:
         sorted_similarities = sorted(similarities.items(), key=lambda x: x[1], reverse=True)
         top_results = sorted_similarities[:top_documents]
         results = []
+
+        # check for malicious content in the top results if enabled
+        if malicious_check:
+            for (doc_id, chunk_id), score in top_results:
+                chunk = self.data[doc_id]['chunks'][chunk_id]
+                malicious_string, malicious_score = self.__malicious_check([chunk['text']])
+                if malicious_string:
+                    raise ValueError(f"Query result contains malicious content: '{malicious_string}' with score {malicious_score:.4f}")
+
         for (doc_id, chunk_id), score in top_results:
             chunk = self.data[doc_id]['chunks'][chunk_id]
             results.append({
@@ -186,49 +205,25 @@ class RAGSec:
         
         return results
 
+    def get_document(self, doc_id):
+        """
+        Retrieve a document by its ID.
+        """
+        if doc_id not in self.data:
+            raise ValueError(f"Document with ID {doc_id} not found.")
+        
+        for chunk_id, chunk in self.data[doc_id]['chunks'].items():
+            chunk.pop('embedding', None)
 
-model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=1)
-ragsec = RAGSec(
-    detector_model=model,  # Replace with your actual model instance
-    detector_model_path="../bert_binary_classifier.pth",  # Path to your model file
-    tokenizer_path="bert-base-uncased",
-    text_splitter=RecursiveCharacterTextSplitter(chunk_size=192, chunk_overlap=50),
-    data_file="./ragsec_data.json",
-    device="cpu"
-)
-
-# Get all nested .txt files in the "data" directory
-def get_all_txt_files(directory):
-    """
-    Get all .txt files in the specified directory and its subdirectories.
-    """
-    txt_files = []
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            if file.endswith('.txt'):
-                txt_files.append(os.path.join(root, file))
-    return txt_files
-
-# Example usage: Get all .txt files and add them to the RAG system
-
-"""
-txt_files = get_all_txt_files("data")
-for file_path in txt_files:
-    with open(file_path, 'r', encoding='utf-8') as f:
-        file_name = os.path.basename(file_path)
-        content = f.read()
+        return self.data[doc_id]
     
-    try:
-        doc_id = ragsec.add(file_name + " " + content, file_name=file_path)
-        print(f"Document added with ID: {doc_id}")
-    except ValueError as e:
-        print(f"Error adding document {file_path}: {e}")
-"""
-
-"""
-# Example query
-res = ragsec.query("Who was president Marlowe?")
-for r in res:
-    print(f"Doc ID: {r['doc_id']}, Chunk ID: {r['chunk_id']}, Similarity Score: {r['similarity_score']:.4f}")
-    print(f"Text: {r['text']}\n")
-"""
+    def delete_document(self, doc_id):
+        """
+        Delete a document by its ID.
+        """
+        if doc_id not in self.data:
+            raise ValueError(f"Document with ID {doc_id} not found.")
+        
+        del self.data[doc_id]
+        self.__save_data(self.data)
+        return f"Document {doc_id} deleted successfully."
