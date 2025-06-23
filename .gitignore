@@ -2,3 +2,5 @@
 bert_binary_classifier.pth
 rag/data/
 rag/*.json
+
+*/__pycache__/

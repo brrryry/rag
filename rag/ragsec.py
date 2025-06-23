@@ -224,8 +224,11 @@ for file_path in txt_files:
     except ValueError as e:
         print(f"Error adding document {file_path}: {e}")
 """
+
+"""
 # Example query
 res = ragsec.query("Who was president Marlowe?")
 for r in res:
     print(f"Doc ID: {r['doc_id']}, Chunk ID: {r['chunk_id']}, Similarity Score: {r['similarity_score']:.4f}")
     print(f"Text: {r['text']}\n")
+"""
