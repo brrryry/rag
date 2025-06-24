@@ -4,14 +4,16 @@ from ragsec import RAGSec
 from transformers import BertForSequenceClassification, BertTokenizer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
+max_seq_length = 512  # Maximum sequence length for BERT
+seq_overlap = 64  # Overlap between sequences for BERT
 
 app = Flask(__name__)
 model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=1)
 ragsec = RAGSec(
     detector_model=model,  # Replace with your actual model instance
-    detector_model_path="./bert_binary_classifier.pth",  # Path to your model file
+    detector_model_path=f"./bert_binary_classifier_{max_seq_length}_{seq_overlap}.pth",  # Path to your model file
     tokenizer_path="bert-base-uncased",
-    text_splitter=RecursiveCharacterTextSplitter(chunk_size=192, chunk_overlap=50),
+    text_splitter=RecursiveCharacterTextSplitter(chunk_size=max_seq_length, chunk_overlap=seq_overlap),
     data_file="./ragsec_data.json",
     device="cpu"
 )

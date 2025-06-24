@@ -6,3 +6,5 @@ rag/*.json
 */__pycache__/
 
 query.py
+
+*/bert_binary_*
