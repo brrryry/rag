@@ -17,7 +17,7 @@ class RAGSec:
     text_splitter=None,
     data_file = "data/ragsec_data.json",
     device=None):
-        self.detector_model = detector_model
+        self.detector_model = BertForSequenceClassification.from_pretrained(detector_model, num_labels=1)
         self.embed_model = AutoModel.from_pretrained(embed_model)
         self.tokenizer_path = tokenizer_path
         self.tokenizer = BertTokenizer.from_pretrained(self.tokenizer_path)
@@ -86,7 +86,7 @@ class RAGSec:
             probs.append(pred)
 
         for chunk, prob in zip(chunks, probs):
-            if prob > 0.5:
+            if prob > 0.75:
                 return chunk, prob
 
         return None, max(probs)
@@ -231,7 +231,7 @@ class RAGSec:
 
 ragsec = RAGSec(
     detector_model="bert-base-uncased",
-    detector_model_path=None,
+    detector_model_path="./bert_binary_classifier_512_64.pth",  # Path to your model file
     embed_model="BAAI/bge-base-en-v1.5",
     tokenizer_path="bert-base-uncased",
     text_splitter=None,
@@ -250,7 +250,7 @@ def get_all_txt_files(directory):
                 txt_files.append(os.path.join(root, file))
     return txt_files
 
-txt_files = get_all_txt_files('data/ragsec_data')
+txt_files = get_all_txt_files('data')
 for file in txt_files:
     with open(file, 'r', encoding='utf-8') as f:
         content = f.read()
