@@ -30,8 +30,8 @@ class RAGSec:
 
         if not text_splitter:
             self.text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=192, 
-                chunk_overlap=50, 
+                chunk_size=512, 
+                chunk_overlap=64, 
                 length_function=lambda x: len(x)
             )
 
@@ -227,3 +227,35 @@ class RAGSec:
         del self.data[doc_id]
         self.__save_data(self.data)
         return f"Document {doc_id} deleted successfully."
+
+
+ragsec = RAGSec(
+    detector_model="bert-base-uncased",
+    detector_model_path=None,
+    embed_model="BAAI/bge-base-en-v1.5",
+    tokenizer_path="bert-base-uncased",
+    text_splitter=None,
+    data_file="data/ragsec_data.json"
+)
+
+# Example usage:
+def get_all_txt_files(directory):
+    """
+    Get all NESTED txt files in a directory.
+    """
+    txt_files = []
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.txt'):
+                txt_files.append(os.path.join(root, file))
+    return txt_files
+
+txt_files = get_all_txt_files('data/ragsec_data')
+for file in txt_files:
+    with open(file, 'r', encoding='utf-8') as f:
+        content = f.read()
+        try:
+            ragsec.add(content, file_name=file)
+            print(f"Added document from {file}")
+        except ValueError as e:
+            print(f"Error adding document from {file}: {e}")
