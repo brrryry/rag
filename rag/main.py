@@ -10,7 +10,7 @@ seq_overlap = 64  # Overlap between sequences for BERT
 app = Flask(__name__)
 model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=1)
 ragsec = RAGSec(
-    detector_model=model,  # Replace with your actual model instance
+    detector_model="bert-base-uncased",  # Replace with your actual model instance
     detector_model_path=f"./bert_binary_classifier_{max_seq_length}_{seq_overlap}.pth",  # Path to your model file
     tokenizer_path="bert-base-uncased",
     text_splitter=RecursiveCharacterTextSplitter(chunk_size=max_seq_length, chunk_overlap=seq_overlap),
